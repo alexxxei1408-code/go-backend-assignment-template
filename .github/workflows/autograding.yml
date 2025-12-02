@@ -6,8 +6,110 @@ on:
   pull_request:
 
 jobs:
-  lint-and-test:
+  detect-changed-assignments:
     runs-on: ubuntu-latest
+    outputs:
+      assignments: ${{ steps.assignments.outputs.assignments }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            hw01:
+              - 'assignments/hw01-api-basics/**'
+            hw02:
+              - 'assignments/hw02-*/**'
+            hw03:
+              - 'assignments/hw03-*/**'
+            hw04:
+              - 'assignments/hw04-*/**'
+            hw05:
+              - 'assignments/hw05-*/**'
+            hw06:
+              - 'assignments/hw06-*/**'
+            hw07:
+              - 'assignments/hw07-*/**'
+            hw08:
+              - 'assignments/hw08-*/**'
+            hw09:
+              - 'assignments/hw09-*/**'
+            hw10:
+              - 'assignments/hw10-*/**'
+
+      - name: Get changed assignments
+        id: assignments
+        env:
+          HW01_CHANGED: ${{ steps.changes.outputs.hw01 }}
+          HW02_CHANGED: ${{ steps.changes.outputs.hw02 }}
+          HW03_CHANGED: ${{ steps.changes.outputs.hw03 }}
+          HW04_CHANGED: ${{ steps.changes.outputs.hw04 }}
+          HW05_CHANGED: ${{ steps.changes.outputs.hw05 }}
+          HW06_CHANGED: ${{ steps.changes.outputs.hw06 }}
+          HW07_CHANGED: ${{ steps.changes.outputs.hw07 }}
+          HW08_CHANGED: ${{ steps.changes.outputs.hw08 }}
+          HW09_CHANGED: ${{ steps.changes.outputs.hw09 }}
+          HW10_CHANGED: ${{ steps.changes.outputs.hw10 }}
+        run: |
+          assignments=()
+          
+          check_hw() {
+            local hw=$1
+            local changed=$2
+            if [ "$changed" == "true" ]; then
+              hw_dir=$(find assignments -maxdepth 1 -type d -name "${hw}-*" | head -1 | xargs basename)
+              if [ -n "$hw_dir" ]; then
+                assignments+=("$hw_dir")
+              fi
+            fi
+          }
+          
+          check_hw "hw01" "$HW01_CHANGED"
+          check_hw "hw02" "$HW02_CHANGED"
+          check_hw "hw03" "$HW03_CHANGED"
+          check_hw "hw04" "$HW04_CHANGED"
+          check_hw "hw05" "$HW05_CHANGED"
+          check_hw "hw06" "$HW06_CHANGED"
+          check_hw "hw07" "$HW07_CHANGED"
+          check_hw "hw08" "$HW08_CHANGED"
+          check_hw "hw09" "$HW09_CHANGED"
+          check_hw "hw10" "$HW10_CHANGED"
+          
+          if [ ${#assignments[@]} -eq 0 ]; then
+            echo "No assignments changed, checking all assignments..."
+            for hw_dir in assignments/*/; do
+              if [ -d "$hw_dir" ] && [ -f "${hw_dir}go.mod" ]; then
+                assignments+=("$(basename "$hw_dir")")
+              fi
+            done
+          fi
+          
+          json_array="["
+          first=true
+          for hw in "${assignments[@]}"; do
+            if [ "$first" = true ]; then
+              first=false
+            else
+              json_array+=","
+            fi
+            json_array+="\"$hw\""
+          done
+          json_array+="]"
+          
+          echo "assignments=$json_array" >> $GITHUB_OUTPUT
+          echo "Found assignments: ${assignments[@]}"
+
+  lint-and-test:
+    needs: detect-changed-assignments
+    if: needs.detect-changed-assignments.outputs.assignments != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        assignment: ${{ fromJson(needs.detect-changed-assignments.outputs.assignments) }}
+      fail-fast: false
 
     steps:
       - uses: actions/checkout@v4
@@ -19,27 +121,24 @@ jobs:
           cache: true
 
       - name: Verify dependencies
-        working-directory: ./assignments/hw01-api-basics
+        working-directory: ./assignments/${{ matrix.assignment }}
         run: go mod download
 
       - name: Run linter
         uses: golangci/golangci-lint-action@v3
         with:
           version: latest
-          working-directory: ./assignments/hw01-api-basics
+          working-directory: ./assignments/${{ matrix.assignment }}
 
       - name: Run tests
-        working-directory: ./assignments/hw01-api-basics
+        working-directory: ./assignments/${{ matrix.assignment }}
         run: |
           go test -v -race -coverprofile=coverage.out ./...
           go tool cover -func=coverage.out
 
       - name: Build check
-        working-directory: ./assignments/hw01-api-basics
+        working-directory: ./assignments/${{ matrix.assignment }}
         run: go build -v .
-
-      # Запуск приватных тестов из отдельного репозитория.
-      # Требуется секрет PRIVATE_TESTS_TOKEN с правами чтения репозитория private_tests.
 
       - name: Checkout private tests repository
         if: github.event_name == 'push'
@@ -51,9 +150,13 @@ jobs:
 
       - name: Run private tests
         if: github.event_name == 'push'
+        working-directory: ./assignments/${{ matrix.assignment }}
         run: |
-          cp private_tests/hw01-api-basics/*_private_test.go assignments/hw01-api-basics/
-          cd assignments/hw01-api-basics
-          go test -v ./...
+          if [ -d "../../private_tests/${{ matrix.assignment }}" ] && [ -n "$(find ../../private_tests/${{ matrix.assignment }} -name '*_private_test.go' 2>/dev/null)" ]; then
+            cp ../../private_tests/${{ matrix.assignment }}/*_private_test.go .
+            go test -v ./...
+          else
+            echo "No private tests found for ${{ matrix.assignment }}"
+          fi
 
 
