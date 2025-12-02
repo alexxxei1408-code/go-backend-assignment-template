@@ -1,0 +1,59 @@
+name: Autograding
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+          cache: true
+
+      - name: Verify dependencies
+        working-directory: ./assignments/hw01-api-basics
+        run: go mod download
+
+      - name: Run linter
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
+          working-directory: ./assignments/hw01-api-basics
+
+      - name: Run tests
+        working-directory: ./assignments/hw01-api-basics
+        run: |
+          go test -v -race -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out
+
+      - name: Build check
+        working-directory: ./assignments/hw01-api-basics
+        run: go build -v .
+
+      # Запуск приватных тестов из отдельного репозитория.
+      # Требуется секрет PRIVATE_TESTS_TOKEN с правами чтения репозитория private_tests.
+
+      - name: Checkout private tests repository
+        if: github.event_name == 'push'
+        uses: actions/checkout@v4
+        with:
+          repository: alexxxei1408-code/private_tests
+          token: ${{ secrets.PRIVATE_TESTS_TOKEN }}
+          path: private_tests
+
+      - name: Run private tests
+        if: github.event_name == 'push'
+        run: |
+          cp private_tests/hw01-api-basics/*_private_test.go assignments/hw01-api-basics/
+          cd assignments/hw01-api-basics
+          go test -v ./...
+
+
