@@ -1,6 +1,9 @@
 package main
 
-import "net/http"
+import (
+	"fmt"
+	"net/http"
+)
 
 // HandleHello обрабатывает запросы к /api/hello.
 // Реализуйте логику:
@@ -14,6 +17,5 @@ func HandleHello(w http.ResponseWriter, r *http.Request) {
 // main оставлен пустым, чтобы сборка успешно проходила.
 // В более сложных заданиях сюда можно вынести запуск HTTP-сервера.
 func main() {
+	fmt.Println("Hello, World!")
 }
-
-
