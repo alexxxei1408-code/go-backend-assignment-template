@@ -20,7 +20,7 @@ jobs:
         with:
           filters: |
             hw01:
-              - 'assignments/hw01-api-basics/**'
+              - 'assignments/hw01-*/**'
             hw02:
               - 'assignments/hw02-*/**'
             hw03:
